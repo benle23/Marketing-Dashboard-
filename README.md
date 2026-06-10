@@ -1,8 +1,8 @@
 # Marketing Funnel Intelligence Dashboard
 
-An interview-ready marketing conversion dashboard built with React, Vite, and the OpenAI Responses API. It helps marketing and GTM teams quickly understand campaign performance, funnel drop-off, lead quality, and the next actions most likely to improve conversion.
+An interview-ready marketing conversion dashboard built with React, Vite, and the OpenAI Responses API. It helps marketing and GTM teams understand campaign performance, upload business data, and turn it into practical next actions.
 
-The dashboard uses realistic mock marketing data and sends it to a small local server endpoint for optional AI analysis. It has no login or database.
+The dashboard uses realistic mock marketing data and can analyze files selected from your computer. It has no login or database.
 
 ## Business Problem
 
@@ -21,10 +21,11 @@ Marketing teams often have plenty of campaign data but no simple way to connect 
 - **Channel performance:** Traffic, leads, conversion rate, cost per lead, and customers by channel
 - **User segments:** Behavioral audiences paired with a recommended action and priority
 - **OpenAI decision brief:** Three plain-English priorities ranked by confidence and supported by dashboard metrics
+- **Desktop file analysis:** Upload Excel, CSV, PDF, Word, PowerPoint, JSON, text, code, and chart images
 
 ## How AI Would Work in a Real Version
 
-The server sends the dashboard's mock data to the OpenAI Responses API and requests a concise, structured decision brief. The API key stays on the server and is never exposed to browser code. In production, the same flow could analyze connected CRM and campaign data.
+The server sends the dashboard context and selected files to the OpenAI Responses API and requests a concise, structured decision brief. The API key stays on the server and is never exposed to browser code. Files are sent only after clicking **Analyze with AI**.
 
 ## Run Locally
 
@@ -39,12 +40,19 @@ To enable live OpenAI analysis, create a local `.env` file:
 
 ```bash
 OPENAI_API_KEY=your_openai_api_key
-OPENAI_MODEL=gpt-5.5
+OPENAI_MODEL=gpt-5.4-mini
 ```
 
-The dashboard still works without an API key and shows the built-in example analysis. `OPENAI_MODEL` is optional and defaults to `gpt-5.5`. Never commit `.env`.
+The dashboard still works without an API key and shows the built-in example analysis. `OPENAI_MODEL` is optional and defaults to `gpt-5.4-mini`. Never commit `.env`.
 
 Live analysis requires a Node.js host that runs `server.js`; a static-only host will display the built-in analysis.
+
+## Upload Limits
+
+- Up to 5 files per analysis
+- Up to 25 MB per file and 30 MB combined
+- Archives, applications, and executable binary files are rejected
+- OpenAI validates whether the selected model can read each uploaded format
 
 Build and run the production server with:
 

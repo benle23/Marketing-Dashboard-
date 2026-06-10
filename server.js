@@ -4,13 +4,18 @@ import { extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL(".", import.meta.url));
-const maxBodyBytes = 250_000;
+const maxBodyBytes = 48 * 1024 * 1024;
+const maxFiles = 5;
+const maxFileBytes = 25 * 1024 * 1024;
+const blockedExtensions = new Set([
+  ".7z", ".app", ".bin", ".dmg", ".exe", ".gz", ".iso", ".pkg", ".rar", ".tar", ".zip",
+]);
+const imageExtensions = new Set([".gif", ".jpeg", ".jpg", ".png", ".webp"]);
 
 await loadLocalEnv();
 
 const port = Number(process.env.PORT || 5173);
 const production = process.env.NODE_ENV === "production";
-
 const vite = production
   ? null
   : await import("vite").then(({ createServer: createViteServer }) =>
@@ -21,6 +26,14 @@ const server = createServer(async (request, response) => {
   try {
     if (request.url === "/api/analyze" && request.method === "POST") {
       await handleAnalysis(request, response);
+      return;
+    }
+
+    if (request.url === "/api/status" && request.method === "GET") {
+      sendJson(response, 200, {
+        configured: Boolean(process.env.OPENAI_API_KEY),
+        model: process.env.OPENAI_MODEL || "gpt-5.4-mini",
+      });
       return;
     }
 
@@ -36,8 +49,12 @@ const server = createServer(async (request, response) => {
 
     await serveStatic(request, response);
   } catch (error) {
-    console.error(error);
-    sendJson(response, 500, { error: "The server could not complete this request." });
+    if (!error.status || error.status >= 500) {
+      console.error(error);
+    }
+    sendJson(response, error.status || 500, {
+      error: error.publicMessage || "The server could not complete this request.",
+    });
   }
 });
 
@@ -48,86 +65,203 @@ server.listen(port, () => {
 async function handleAnalysis(request, response) {
   if (!process.env.OPENAI_API_KEY) {
     sendJson(response, 503, {
-      error: "Add OPENAI_API_KEY to a local .env file, then restart the dashboard.",
+      error: "The server is running, but OPENAI_API_KEY is missing. Add it to .env and restart.",
     });
     return;
   }
 
-  const dashboardData = await readJsonBody(request);
-  const openaiResponse = await fetch(
-    `${process.env.OPENAI_API_BASE_URL || "https://api.openai.com/v1"}/responses`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: process.env.OPENAI_MODEL || "gpt-5.5",
-        store: false,
-        reasoning: { effort: "low" },
-        instructions:
-          "You are a concise marketing analytics advisor. Analyze only the supplied dashboard data. Identify the single most important issue and exactly three practical priorities. Use plain English, cite metrics from the data, avoid invented facts, and keep each field brief.",
-        input: JSON.stringify(dashboardData),
-        text: {
-          verbosity: "low",
-          format: {
-            type: "json_schema",
-            name: "marketing_analysis",
-            strict: true,
-            schema: {
-              type: "object",
-              additionalProperties: false,
-              required: ["headline", "summary", "priorities"],
-              properties: {
-                headline: { type: "string" },
-                summary: { type: "string" },
-                priorities: {
-                  type: "array",
-                  minItems: 3,
-                  maxItems: 3,
-                  items: {
-                    type: "object",
-                    additionalProperties: false,
-                    required: ["action", "evidence", "impact", "confidence"],
-                    properties: {
-                      action: { type: "string" },
-                      evidence: { type: "string" },
-                      impact: { type: "string" },
-                      confidence: { type: "string", enum: ["High", "Medium", "Low"] },
+  const payload = await readJsonBody(request);
+  const files = validateFiles(payload.files || []);
+  const content = buildInputContent(payload, files);
+
+  let openaiResponse;
+  try {
+    openaiResponse = await fetch(
+      `${process.env.OPENAI_API_BASE_URL || "https://api.openai.com/v1"}/responses`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        signal: AbortSignal.timeout(120_000),
+        body: JSON.stringify({
+          model: process.env.OPENAI_MODEL || "gpt-5.4-mini",
+          store: false,
+          instructions:
+            "You are a concise marketing and business data analyst. Analyze only the supplied dashboard data and uploaded files. Explain the most important pattern, data quality limitations, and exactly three practical next actions. Cite specific values from the supplied data, never invent facts, and use plain English.",
+          input: [{ role: "user", content }],
+          text: {
+            format: {
+              type: "json_schema",
+              name: "data_analysis",
+              strict: true,
+              schema: {
+                type: "object",
+                additionalProperties: false,
+                required: ["headline", "summary", "dataSummary", "priorities"],
+                properties: {
+                  headline: { type: "string" },
+                  summary: { type: "string" },
+                  dataSummary: { type: "string" },
+                  priorities: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      additionalProperties: false,
+                      required: ["action", "evidence", "impact", "confidence"],
+                      properties: {
+                        action: { type: "string" },
+                        evidence: { type: "string" },
+                        impact: { type: "string" },
+                        confidence: { type: "string", enum: ["High", "Medium", "Low"] },
+                      },
                     },
                   },
                 },
               },
             },
           },
-        },
-      }),
-    },
-  );
+        }),
+      },
+    );
+  } catch (error) {
+    const message = error.name === "TimeoutError"
+      ? "OpenAI analysis timed out. Try a smaller file or fewer files."
+      : "The server could not reach OpenAI. Check the network connection and try again.";
+    sendJson(response, 502, { error: message });
+    return;
+  }
 
-  const result = await openaiResponse.json();
+  const result = await readOpenAIResponse(openaiResponse);
 
   if (!openaiResponse.ok) {
-    console.error("OpenAI API error:", result.error?.message || openaiResponse.statusText);
+    const detail = result.error?.message || `Request failed with status ${openaiResponse.status}.`;
+    console.error("OpenAI API error:", detail);
     sendJson(response, openaiResponse.status, {
-      error: "OpenAI could not analyze the data. Check the API key, model access, and billing.",
+      error: `OpenAI could not analyze the data: ${detail}`,
     });
     return;
   }
 
-  const outputText =
-    result.output_text ||
-    result.output
-      ?.flatMap((item) => item.content || [])
-      .find((item) => item.type === "output_text")?.text;
-
-  if (!outputText) {
-    sendJson(response, 502, { error: "OpenAI returned an empty analysis." });
+  if (result.status === "incomplete") {
+    sendJson(response, 502, {
+      error: `OpenAI could not finish the analysis: ${result.incomplete_details?.reason || "unknown reason"}.`,
+    });
     return;
   }
 
-  sendJson(response, 200, { analysis: JSON.parse(outputText), model: result.model });
+  const refusal = result.output
+    ?.flatMap((item) => item.content || [])
+    .find((item) => item.type === "refusal")?.refusal;
+  if (refusal) {
+    sendJson(response, 422, { error: `OpenAI declined this analysis: ${refusal}` });
+    return;
+  }
+
+  const outputText = extractOutputText(result);
+  if (!outputText) {
+    sendJson(response, 502, { error: "OpenAI returned an empty analysis. Try again." });
+    return;
+  }
+
+  try {
+    sendJson(response, 200, {
+      analysis: JSON.parse(outputText),
+      model: result.model,
+      sources: files.map(({ name, size }) => ({ name, size })),
+    });
+  } catch {
+    sendJson(response, 502, { error: "OpenAI returned an unreadable analysis. Try again." });
+  }
+}
+
+function buildInputContent(payload, files) {
+  const question = typeof payload.question === "string" && payload.question.trim()
+    ? payload.question.trim().slice(0, 2_000)
+    : "Analyze this data and recommend the three most important next actions.";
+  const dashboardData = payload.dashboardData && typeof payload.dashboardData === "object"
+    ? JSON.stringify(payload.dashboardData)
+    : "{}";
+  const content = [
+    {
+      type: "input_text",
+      text: `${question}\n\nCurrent dashboard context:\n${dashboardData}`,
+    },
+  ];
+
+  for (const file of files) {
+    if (file.isImage) {
+      content.push({ type: "input_image", image_url: file.data, detail: "auto" });
+    } else {
+      content.push({ type: "input_file", filename: file.name, file_data: file.data });
+    }
+  }
+
+  return content;
+}
+
+function validateFiles(files) {
+  if (!Array.isArray(files)) {
+    throw publicError(400, "Uploaded files must be sent as a list.");
+  }
+  if (files.length > maxFiles) {
+    throw publicError(400, `Upload no more than ${maxFiles} files at a time.`);
+  }
+
+  return files.map((file) => {
+    const name = sanitizeFileName(file?.name);
+    const extension = extname(name).toLowerCase();
+    const size = Number(file?.size || 0);
+    const dataSize = estimateDataUrlBytes(file?.data);
+
+    if (!name || dataSize === null) {
+      throw publicError(400, "One of the uploaded files is invalid.");
+    }
+    if (blockedExtensions.has(extension)) {
+      throw publicError(400, `${name} is an archive, application, or unsupported binary file.`);
+    }
+    if (!size || size > maxFileBytes || dataSize > maxFileBytes) {
+      throw publicError(400, `${name} must be smaller than 25 MB.`);
+    }
+
+    return {
+      data: file.data,
+      isImage: String(file.type || "").startsWith("image/") || imageExtensions.has(extension),
+      name,
+      size,
+    };
+  });
+}
+
+function estimateDataUrlBytes(data) {
+  if (typeof data !== "string" || !/^data:[^,]+;base64,/.test(data)) {
+    return null;
+  }
+  const encoded = data.slice(data.indexOf(",") + 1);
+  return Math.ceil((encoded.length * 3) / 4);
+}
+
+function sanitizeFileName(value) {
+  return typeof value === "string"
+    ? value.replace(/[^\w.\- ()]/g, "_").slice(0, 180)
+    : "";
+}
+
+function extractOutputText(result) {
+  return result.output_text ||
+    result.output
+      ?.flatMap((item) => item.content || [])
+      .find((item) => item.type === "output_text")?.text;
+}
+
+async function readOpenAIResponse(response) {
+  const text = await response.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { error: { message: text.slice(0, 300) || response.statusText } };
+  }
 }
 
 async function readJsonBody(request) {
@@ -137,12 +271,23 @@ async function readJsonBody(request) {
   for await (const chunk of request) {
     size += chunk.length;
     if (size > maxBodyBytes) {
-      throw new Error("Request body is too large.");
+      throw publicError(413, "The upload is too large. Upload fewer or smaller files.");
     }
     chunks.push(chunk);
   }
 
-  return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  try {
+    return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  } catch {
+    throw publicError(400, "The analysis request is not valid JSON.");
+  }
+}
+
+function publicError(status, message) {
+  const error = new Error(message);
+  error.status = status;
+  error.publicMessage = message;
+  return error;
 }
 
 function sendJson(response, status, data) {

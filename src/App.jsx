@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Icon, KpiCard, PriorityBadge, SectionHeader } from "@/components/DashboardComponents";
 import {
   channels,
@@ -14,18 +14,62 @@ const number = new Intl.NumberFormat("en-US");
 
 function AiBrief() {
   const [analysis, setAnalysis] = useState(defaultAnalysis);
+  const [files, setFiles] = useState([]);
+  const [question, setQuestion] = useState("");
   const [status, setStatus] = useState("ready");
   const [error, setError] = useState("");
+  const [apiStatus, setApiStatus] = useState({ configured: null, model: "" });
+
+  useEffect(() => {
+    fetch("/api/status")
+      .then((response) => {
+        if (!response.headers.get("content-type")?.includes("application/json")) {
+          throw new Error();
+        }
+        return response.json();
+      })
+      .then(setApiStatus)
+      .catch(() => setApiStatus({ configured: false, model: "" }));
+  }, []);
+
+  function selectFiles(event) {
+    const nextFiles = Array.from(event.target.files || []);
+    const combinedFiles = [...files, ...nextFiles];
+    const oversizedFile = combinedFiles.find((file) => file.size > 25 * 1024 * 1024);
+    const totalSize = combinedFiles.reduce((sum, file) => sum + file.size, 0);
+
+    if (combinedFiles.length > 5) {
+      setError("Upload no more than 5 files at a time.");
+    } else if (oversizedFile) {
+      setError(`${oversizedFile.name} is larger than the 25 MB per-file limit.`);
+    } else if (totalSize > 30 * 1024 * 1024) {
+      setError("The selected files exceed the 30 MB combined upload limit.");
+    } else {
+      setFiles(combinedFiles);
+      setError("");
+    }
+
+    event.target.value = "";
+  }
+
+  function removeFile(index) {
+    setFiles((currentFiles) => currentFiles.filter((_, fileIndex) => fileIndex !== index));
+  }
 
   async function analyzeData() {
     setStatus("loading");
     setError("");
 
     try {
+      const uploadedFiles = await Promise.all(files.map(fileToPayload));
       const response = await fetch("/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ kpis, funnelStages, channels, segments }),
+        body: JSON.stringify({
+          dashboardData: { kpis, funnelStages, channels, segments },
+          files: uploadedFiles,
+          question,
+        }),
       });
       const result = response.headers.get("content-type")?.includes("application/json")
         ? await response.json()
@@ -47,7 +91,15 @@ function AiBrief() {
     <section className="ai-brief" aria-live="polite">
       <div className="ai-brief-heading">
         <div>
-          <span className="section-eyebrow">OpenAI decision brief</span>
+          <span className="section-eyebrow">
+            OpenAI decision brief
+            <i className={apiStatus.configured === null ? "" : apiStatus.configured ? "status-online" : "status-offline"} />
+            {apiStatus.configured === null
+              ? "Checking server..."
+              : apiStatus.configured
+                ? `${apiStatus.model} ready`
+                : "Server setup needed"}
+          </span>
           <h2>{analysis.headline}</h2>
           <p>{analysis.summary}</p>
         </div>
@@ -62,12 +114,45 @@ function AiBrief() {
         </button>
       </div>
 
+      <div className="data-input-panel">
+        <div className="file-input-copy">
+          <strong>Analyze your own data</strong>
+          <span>Upload up to 5 files. Supports Excel, CSV, PDF, Word, PowerPoint, JSON, text, code, and chart images.</span>
+        </div>
+        <label className="file-picker">
+          <Icon name="upload" size={15} />
+          Choose files
+          <input multiple onChange={selectFiles} type="file" />
+        </label>
+        <input
+          className="question-input"
+          maxLength="2000"
+          onChange={(event) => setQuestion(event.target.value)}
+          placeholder="Optional: What should the AI focus on?"
+          type="text"
+          value={question}
+        />
+        <div className="selected-files">
+          {files.length === 0 ? (
+            <span>Using the dashboard's mock marketing data</span>
+          ) : files.map((file, index) => (
+            <span className="selected-file" key={`${file.name}-${file.lastModified}`}>
+              <strong>{file.name}</strong>
+              <small>{formatBytes(file.size)}</small>
+              <button aria-label={`Remove ${file.name}`} onClick={() => removeFile(index)} type="button">Remove</button>
+            </span>
+          ))}
+        </div>
+      </div>
+
       {error && (
         <div className="api-notice">
-          <strong>AI analysis is not configured yet.</strong>
+          <strong>Analysis needs attention.</strong>
           <span>{error}</span>
         </div>
       )}
+
+      <div className="analysis-source-summary">{analysis.dataSummary}</div>
 
       <div className="priority-grid">
         {analysis.priorities.map((priority, index) => (
@@ -84,6 +169,27 @@ function AiBrief() {
       </div>
     </section>
   );
+}
+
+function fileToPayload(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error(`Could not read ${file.name}.`));
+    reader.onload = () => resolve({
+      data: reader.result,
+      name: file.name,
+      size: file.size,
+      type: file.type,
+    });
+    reader.readAsDataURL(file);
+  });
+}
+
+function formatBytes(bytes) {
+  if (bytes < 1024 * 1024) {
+    return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  }
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function FunnelAnalysis() {
@@ -211,7 +317,7 @@ function App() {
 
         <footer>
           <span>Marketing Funnel Intelligence</span>
-          <p>OpenAI-assisted analysis · Mock dashboard data</p>
+          <p>OpenAI-assisted analysis · Uploads are sent only when you click Analyze with AI</p>
         </footer>
       </main>
     </div>

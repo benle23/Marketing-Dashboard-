@@ -63,6 +63,7 @@ export const segments = [
 export const defaultAnalysis = {
   headline: "Fix the form-start drop-off first",
   summary: "The clearest growth opportunity is between landing page views and form starts. Focus the team on that leak before adding more traffic.",
+  dataSummary: "Example analysis based on the dashboard's mock marketing funnel, channel, and segment data.",
   priorities: [
     {
       action: "Shorten the lead form",

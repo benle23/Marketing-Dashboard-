@@ -5,6 +5,7 @@ const icons = {
   customers: <path d="M20 21a8 8 0 1 0-16 0m8-9a5 5 0 1 0 0-10 5 5 0 0 0 0 10Zm6 3 2 2 4-4" />,
   sparkle: <path d="m12 3 1.4 4.6L18 9l-4.6 1.4L12 15l-1.4-4.6L6 9l4.6-1.4L12 3Zm7 11 .8 2.2L22 17l-2.2.8L19 20l-.8-2.2L16 17l2.2-.8L19 14ZM5 15l.7 1.8L8 17.5l-2.3.7L5 20l-.7-1.8-2.3-.7 2.3-.7L5 15Z" />,
   target: <path d="M22 12A10 10 0 1 1 12 2m10 0-10 10m4-10h6v6" />,
+  upload: <path d="M12 16V4m0 0L7 9m5-5 5 5M4 15v5h16v-5" />,
 };
 
 export function Icon({ name, size = 18 }) {
