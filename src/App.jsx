@@ -107,12 +107,16 @@ function AiBrief() {
         </div>
         <button
           className="primary-button"
-          disabled={status === "loading"}
+          disabled={status === "loading" || apiStatus.configured === false}
           onClick={analyzeData}
           type="button"
         >
           <Icon name="sparkle" size={16} />
-          {status === "loading" ? "Analyzing data..." : "Analyze with AI"}
+          {status === "loading"
+            ? "Analyzing data..."
+            : apiStatus.configured === false
+              ? "Add API key to enable"
+              : "Analyze with AI"}
         </button>
       </div>
 
@@ -146,6 +150,13 @@ function AiBrief() {
           ))}
         </div>
       </div>
+
+      {apiStatus.configured === false && !apiStatus.unavailable && (
+        <div className="api-notice setup-notice">
+          <strong>One-time Vercel setup required.</strong>
+          <span>Add `OPENAI_API_KEY` in Vercel Project Settings, then redeploy. The API route is online.</span>
+        </div>
+      )}
 
       {error && (
         <div className="api-notice">
