@@ -45,12 +45,12 @@ OPENAI_MODEL=gpt-5.4-mini
 
 The dashboard still works without an API key and shows the built-in example analysis. `OPENAI_MODEL` is optional and defaults to `gpt-5.4-mini`. Never commit `.env`.
 
-Live analysis requires a Node.js host that runs `server.js`; a static-only host will display the built-in analysis.
+Live analysis works through `server.js` locally and through the included Vercel functions in `api/` when deployed.
 
 ## Upload Limits
 
 - Up to 5 files per analysis
-- Up to 25 MB per file and 30 MB combined
+- Up to 3 MB per file and 3 MB combined on the hosted dashboard
 - Archives, applications, and executable binary files are rejected
 - OpenAI validates whether the selected model can read each uploaded format
 
@@ -60,6 +60,15 @@ Build and run the production server with:
 npm run build
 npm start
 ```
+
+## Deploy on Vercel
+
+1. Import this GitHub repository into Vercel or redeploy the latest `main` branch.
+2. In Vercel Project Settings, add `OPENAI_API_KEY` for Production, Preview, and Development.
+3. Optionally add `OPENAI_MODEL`; it defaults to `gpt-5.4-mini`.
+4. Redeploy after changing environment variables.
+
+The included `vercel.json` builds the Vite frontend and deploys `/api/status` and `/api/analyze` as serverless functions.
 
 ## Future Improvements
 

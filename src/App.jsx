@@ -29,21 +29,21 @@ function AiBrief() {
         return response.json();
       })
       .then(setApiStatus)
-      .catch(() => setApiStatus({ configured: false, model: "" }));
+      .catch(() => setApiStatus({ configured: false, model: "", unavailable: true }));
   }, []);
 
   function selectFiles(event) {
     const nextFiles = Array.from(event.target.files || []);
     const combinedFiles = [...files, ...nextFiles];
-    const oversizedFile = combinedFiles.find((file) => file.size > 25 * 1024 * 1024);
+    const oversizedFile = combinedFiles.find((file) => file.size > 3 * 1024 * 1024);
     const totalSize = combinedFiles.reduce((sum, file) => sum + file.size, 0);
 
     if (combinedFiles.length > 5) {
       setError("Upload no more than 5 files at a time.");
     } else if (oversizedFile) {
-      setError(`${oversizedFile.name} is larger than the 25 MB per-file limit.`);
-    } else if (totalSize > 30 * 1024 * 1024) {
-      setError("The selected files exceed the 30 MB combined upload limit.");
+      setError(`${oversizedFile.name} is larger than the 3 MB hosted upload limit.`);
+    } else if (totalSize > 3 * 1024 * 1024) {
+      setError("The selected files exceed the 3 MB combined hosted upload limit.");
     } else {
       setFiles(combinedFiles);
       setError("");
@@ -73,7 +73,7 @@ function AiBrief() {
       });
       const result = response.headers.get("content-type")?.includes("application/json")
         ? await response.json()
-        : { error: "The AI analysis endpoint is unavailable on this host." };
+        : { error: "The deployed AI route is unavailable. Redeploy the latest main branch on Vercel." };
 
       if (!response.ok) {
         throw new Error(result.error || "The analysis could not be completed.");
@@ -98,7 +98,9 @@ function AiBrief() {
               ? "Checking server..."
               : apiStatus.configured
                 ? `${apiStatus.model} ready`
-                : "Server setup needed"}
+                : apiStatus.unavailable
+                  ? "API route unavailable"
+                  : "Add API key in Vercel"}
           </span>
           <h2>{analysis.headline}</h2>
           <p>{analysis.summary}</p>
@@ -117,7 +119,7 @@ function AiBrief() {
       <div className="data-input-panel">
         <div className="file-input-copy">
           <strong>Analyze your own data</strong>
-          <span>Upload up to 5 files. Supports Excel, CSV, PDF, Word, PowerPoint, JSON, text, code, and chart images.</span>
+          <span>Upload up to 5 files totaling 3 MB. Supports Excel, CSV, PDF, Word, PowerPoint, JSON, text, code, and chart images.</span>
         </div>
         <label className="file-picker">
           <Icon name="upload" size={15} />
