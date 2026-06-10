@@ -4,9 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "node server.js",
     "build": "vite build",
-    "start": "vite preview"
+    "start": "NODE_ENV=production node server.js"
   },
   "dependencies": {
     "react": "^18.3.1",

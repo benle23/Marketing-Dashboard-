@@ -1,9 +1,8 @@
 export const kpis = [
-  { label: "Visitors", value: "12,480", trend: "+12%", context: "vs last period", tone: "blue" },
-  { label: "Leads", value: "1,245", trend: "+8.4%", context: "vs last period", tone: "purple" },
-  { label: "Conversion Rate", value: "9.98%", trend: "+1.2 pts", context: "vs last period", tone: "green" },
-  { label: "Demo Requests", value: "318", trend: "+16%", context: "vs last period", tone: "orange" },
-  { label: "Customers", value: "74", trend: "+9.8%", context: "vs last period", tone: "teal" },
+  { label: "Visitors", value: "12,480", trend: "+12%" },
+  { label: "Leads", value: "1,245", trend: "+8.4%" },
+  { label: "Conversion Rate", value: "9.98%", trend: "+1.2 pts" },
+  { label: "Customers", value: "74", trend: "+9.8%" },
 ];
 
 export const funnelStages = [
@@ -61,33 +60,27 @@ export const segments = [
   },
 ];
 
-export const recommendations = [
-  {
-    title: "Fix landing page CTA",
-    issue: "High drop-off from landing page views to form starts",
-    metric: "Only 27.3% of landing page viewers start the form",
-    action: "Test a shorter form and stronger CTA",
-    confidence: "High",
-  },
-  {
-    title: "Prioritize pricing page visitors",
-    issue: "High-intent visitors are ready for direct outreach",
-    metric: "186 users visited pricing and requested a demo",
-    action: "Route this segment to sales within 24 hours",
-    confidence: "High",
-  },
-  {
-    title: "Shift budget toward email and LinkedIn",
-    issue: "Channel efficiency is uneven",
-    metric: "Email converts at 16.1%; LinkedIn drove 28 customers",
-    action: "Move 15% of organic social spend into both channels",
-    confidence: "Medium",
-  },
-  {
-    title: "Nurture warm leads",
-    issue: "Engaged leads are not taking the next step",
-    metric: "420 users downloaded a guide and opened emails",
-    action: "Launch a three-touch proof-point sequence",
-    confidence: "Medium",
-  },
-];
+export const defaultAnalysis = {
+  headline: "Fix the form-start drop-off first",
+  summary: "The clearest growth opportunity is between landing page views and form starts. Focus the team on that leak before adding more traffic.",
+  priorities: [
+    {
+      action: "Shorten the lead form",
+      evidence: "Only 27.3% of landing page viewers start the form.",
+      impact: "Increase lead volume from existing traffic.",
+      confidence: "High",
+    },
+    {
+      action: "Prioritize high-intent users",
+      evidence: "186 users visited pricing and requested a demo.",
+      impact: "Create near-term sales conversations.",
+      confidence: "High",
+    },
+    {
+      action: "Favor email and LinkedIn",
+      evidence: "Email converts best; LinkedIn creates the most customers.",
+      impact: "Improve acquisition efficiency.",
+      confidence: "Medium",
+    },
+  ],
+};

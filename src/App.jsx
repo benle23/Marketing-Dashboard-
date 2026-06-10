@@ -1,34 +1,98 @@
-import {
-  Icon,
-  InsightCard,
-  KpiCard,
-  PriorityBadge,
-  SectionHeader,
-} from "@/components/DashboardComponents";
+import { useState } from "react";
+import { Icon, KpiCard, PriorityBadge, SectionHeader } from "@/components/DashboardComponents";
 import {
   channels,
+  defaultAnalysis,
   funnelStages,
   kpis,
-  recommendations,
   segments,
 } from "@/data/dashboardData";
 import "@/styles/dashboard.css";
 
-const kpiIcons = ["visitors", "leads", "conversion", "demos", "customers"];
+const kpiIcons = ["visitors", "leads", "conversion", "customers"];
 const number = new Intl.NumberFormat("en-US");
+
+function AiBrief() {
+  const [analysis, setAnalysis] = useState(defaultAnalysis);
+  const [status, setStatus] = useState("ready");
+  const [error, setError] = useState("");
+
+  async function analyzeData() {
+    setStatus("loading");
+    setError("");
+
+    try {
+      const response = await fetch("/api/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kpis, funnelStages, channels, segments }),
+      });
+      const result = response.headers.get("content-type")?.includes("application/json")
+        ? await response.json()
+        : { error: "The AI analysis endpoint is unavailable on this host." };
+
+      if (!response.ok) {
+        throw new Error(result.error || "The analysis could not be completed.");
+      }
+
+      setAnalysis(result.analysis);
+      setStatus("complete");
+    } catch (requestError) {
+      setError(requestError.message);
+      setStatus("error");
+    }
+  }
+
+  return (
+    <section className="ai-brief" aria-live="polite">
+      <div className="ai-brief-heading">
+        <div>
+          <span className="section-eyebrow">OpenAI decision brief</span>
+          <h2>{analysis.headline}</h2>
+          <p>{analysis.summary}</p>
+        </div>
+        <button
+          className="primary-button"
+          disabled={status === "loading"}
+          onClick={analyzeData}
+          type="button"
+        >
+          <Icon name="sparkle" size={16} />
+          {status === "loading" ? "Analyzing data..." : "Analyze with AI"}
+        </button>
+      </div>
+
+      {error && (
+        <div className="api-notice">
+          <strong>AI analysis is not configured yet.</strong>
+          <span>{error}</span>
+        </div>
+      )}
+
+      <div className="priority-grid">
+        {analysis.priorities.map((priority, index) => (
+          <article className="priority-card" key={`${priority.action}-${index}`}>
+            <div className="priority-card-topline">
+              <span>0{index + 1}</span>
+              <PriorityBadge value={priority.confidence} />
+            </div>
+            <h3>{priority.action}</h3>
+            <p>{priority.evidence}</p>
+            <strong>{priority.impact}</strong>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
 
 function FunnelAnalysis() {
   const max = funnelStages[0].value;
 
   return (
-    <section className="panel funnel-panel">
-      <SectionHeader
-        eyebrow="Journey health"
-        title="Funnel analysis"
-        description="See where demand turns into pipeline, and where it gets stuck."
-        action={<span className="period-chip">Last 30 days</span>}
-      />
-      <div className="funnel-list" aria-label="Marketing funnel stages">
+    <section className="panel">
+      <SectionHeader title="Where users drop off" description="Conversion between each funnel step." />
+      <div className="funnel-list">
         {funnelStages.map((stage, index) => {
           const previous = funnelStages[index - 1]?.value;
           const stepRate = previous ? (stage.value / previous) * 100 : 100;
@@ -40,90 +104,34 @@ function FunnelAnalysis() {
                 <strong>{number.format(stage.value)}</strong>
               </div>
               <div className="funnel-track">
-                <div
-                  className="funnel-fill"
-                  style={{ "--funnel-width": `${Math.max((stage.value / max) * 100, 1.2)}%` }}
-                />
+                <i style={{ "--funnel-width": `${Math.max((stage.value / max) * 100, 1.2)}%` }} />
               </div>
-              <span className={`step-rate ${stepRate < 30 ? "drop" : ""}`}>
-                {index === 0 ? "Entry" : `${stepRate.toFixed(1)}%`}
+              <span className={stepRate < 30 ? "drop" : ""}>
+                {index === 0 ? "Start" : `${stepRate.toFixed(1)}%`}
               </span>
             </div>
           );
         })}
       </div>
-      <InsightCard>
-        Biggest drop-off: <strong>Landing Page Views to Form Starts.</strong> Test a clearer
-        CTA and reduce form friction.
-      </InsightCard>
-    </section>
-  );
-}
-
-function RecommendationPanel() {
-  return (
-    <aside className="panel recommendations-panel">
-      <SectionHeader
-        eyebrow="Action plan"
-        title="AI recommendations"
-        description="Prioritized next steps based on the strongest signals."
-      />
-      <div className="recommendation-list">
-        {recommendations.map((recommendation, index) => (
-          <article className="recommendation-card" key={recommendation.title}>
-            <div className="recommendation-heading">
-              <span className="recommendation-number">0{index + 1}</span>
-              <PriorityBadge value={recommendation.confidence} />
-            </div>
-            <h3>{recommendation.title}</h3>
-            <p>{recommendation.issue}</p>
-            <div className="recommendation-metric">{recommendation.metric}</div>
-            <div className="recommendation-action">
-              <Icon name="arrow" size={15} />
-              <span>{recommendation.action}</span>
-            </div>
-          </article>
-        ))}
+      <div className="plain-insight">
+        <Icon name="target" size={17} />
+        <p><strong>Largest opportunity:</strong> Only 27.3% of landing page viewers start the form.</p>
       </div>
-    </aside>
+    </section>
   );
 }
 
 function ChannelPerformance() {
   return (
     <section className="panel">
-      <SectionHeader
-        eyebrow="Acquisition quality"
-        title="Channel performance"
-        description="Compare traffic volume with the leads and customers each channel creates."
-        action={<span className="period-chip">5 active channels</span>}
-      />
-      <div className="channel-summary">
-        <div>
-          <span>Best conversion</span>
-          <strong>Email Campaign</strong>
-          <small>16.1% visitor-to-lead</small>
-        </div>
-        <div>
-          <span>Most customers</span>
-          <strong>LinkedIn Ads</strong>
-          <small>28 customers acquired</small>
-        </div>
-        <div>
-          <span>Lowest cost</span>
-          <strong>Referral</strong>
-          <small>$5 cost per lead</small>
-        </div>
-      </div>
+      <SectionHeader title="Which channels perform best" description="Quality and efficiency by acquisition source." />
       <div className="table-scroll">
-        <table className="data-table channel-table">
+        <table className="data-table">
           <thead>
             <tr>
               <th>Channel</th>
-              <th>Visitors</th>
-              <th>Leads</th>
-              <th>Conversion rate</th>
-              <th>Cost per lead</th>
+              <th>Conversion</th>
+              <th>Cost / lead</th>
               <th>Customers</th>
             </tr>
           </thead>
@@ -131,69 +139,40 @@ function ChannelPerformance() {
             {channels.map((channel) => (
               <tr key={channel.name}>
                 <td>
-                  <span className="channel-name">
-                    <i style={{ background: channel.color }} />
-                    {channel.name}
-                  </span>
+                  <span className="channel-name"><i style={{ background: channel.color }} />{channel.name}</span>
                 </td>
-                <td>{number.format(channel.visitors)}</td>
-                <td>{number.format(channel.leads)}</td>
-                <td>
-                  <div className="conversion-cell">
-                    <span>{channel.conversionRate}%</span>
-                    <span className="mini-track">
-                      <i style={{ "--rate": `${channel.conversionRate * 5.5}%`, background: channel.color }} />
-                    </span>
-                  </div>
-                </td>
+                <td><strong>{channel.conversionRate}%</strong></td>
                 <td>${channel.cpl}</td>
-                <td><strong>{channel.customers}</strong></td>
+                <td>{channel.customers}</td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-      <InsightCard label="Channel insight" icon="target">
-        Email has the strongest conversion rate and lowest scalable cost per lead, while
-        LinkedIn produces the most customers.
-      </InsightCard>
+      <div className="plain-insight">
+        <Icon name="conversion" size={17} />
+        <p><strong>Email is most efficient.</strong> LinkedIn creates the most customers.</p>
+      </div>
     </section>
   );
 }
 
-function UserSegments() {
+function AudienceActions() {
   return (
-    <section className="panel">
-      <SectionHeader
-        eyebrow="Audience strategy"
-        title="User segments"
-        description="Turn behavioral signals into a clear next action for every audience."
-      />
-      <div className="table-scroll">
-        <table className="data-table segment-table">
-          <thead>
-            <tr>
-              <th>Segment</th>
-              <th>Behavior signal</th>
-              <th>User count</th>
-              <th>Recommended action</th>
-              <th>Priority</th>
-            </tr>
-          </thead>
-          <tbody>
-            {segments.map((segment) => (
-              <tr key={segment.segment}>
-                <td><strong>{segment.segment}</strong></td>
-                <td>{segment.signal}</td>
-                <td>{number.format(segment.count)}</td>
-                <td>
-                  <span className="action-link">{segment.action} <Icon name="arrow" size={14} /></span>
-                </td>
-                <td><PriorityBadge value={segment.priority} /></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+    <section className="panel audience-panel">
+      <SectionHeader title="Who the team should act on" description="Behavior-based audiences with one clear next step." />
+      <div className="audience-list">
+        {segments.map((segment) => (
+          <article className="audience-row" key={segment.segment}>
+            <div>
+              <strong>{segment.segment}</strong>
+              <span>{segment.signal}</span>
+            </div>
+            <b>{number.format(segment.count)}</b>
+            <p>{segment.action}</p>
+            <PriorityBadge value={segment.priority} />
+          </article>
+        ))}
       </div>
     </section>
   );
@@ -204,29 +183,16 @@ function App() {
     <div className="app">
       <header className="topbar">
         <div className="brand-mark">MF</div>
-        <div className="topbar-copy">
-          <span>Growth intelligence</span>
-          <strong>Overview</strong>
-        </div>
-        <div className="topbar-actions">
-          <span className="freshness"><i /> Data refreshed 8 min ago</span>
-          <button className="secondary-button" type="button" onClick={() => window.print()}>
-            <Icon name="download" size={16} /> Export brief
-          </button>
-        </div>
+        <strong>Marketing Funnel Intelligence</strong>
+        <span className="freshness"><i /> Mock data · Last 30 days</span>
       </header>
 
       <main>
         <section className="hero">
           <div>
-            <div className="badge"><Icon name="sparkle" size={14} /> Prototype Demo</div>
-            <h1>Marketing Funnel<br /><span>Intelligence Dashboard</span></h1>
-            <p>AI-assisted view of funnel performance, user intent, and conversion opportunities.</p>
-          </div>
-          <div className="hero-decision">
-            <span>Top decision this period</span>
-            <strong>Improve landing page to form conversion</strong>
-            <p>Recovering just 5% of lost visitors could create approximately 391 additional form starts.</p>
+            <span className="section-eyebrow">Performance overview</span>
+            <h1>Turn marketing data into the next best action.</h1>
+            <p>See what is converting, where prospects drop off, and what the team should do next.</p>
           </div>
         </section>
 
@@ -234,17 +200,18 @@ function App() {
           {kpis.map((item, index) => <KpiCard item={item} icon={kpiIcons[index]} key={item.label} />)}
         </section>
 
-        <div className="primary-grid">
+        <AiBrief />
+
+        <div className="analysis-grid">
           <FunnelAnalysis />
-          <RecommendationPanel />
+          <ChannelPerformance />
         </div>
 
-        <ChannelPerformance />
-        <UserSegments />
+        <AudienceActions />
 
         <footer>
           <span>Marketing Funnel Intelligence</span>
-          <p>Mock data for interview demonstration. Built to turn signals into clear decisions.</p>
+          <p>OpenAI-assisted analysis · Mock dashboard data</p>
         </footer>
       </main>
     </div>
